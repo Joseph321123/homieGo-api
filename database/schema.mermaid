@@ -1,0 +1,99 @@
+erDiagram
+
+    USUARIOS {
+        int id PK
+        string nombre
+        string email UK
+        string password_hash
+        string telefono
+        boolean activo
+    }
+
+    ROLES {
+        int id PK
+        string nombre UK
+    }
+
+    USUARIO_ROLES {
+        int id PK
+        int usuario_id FK
+        int rol_id FK
+    }
+
+    PROPIEDADES {
+        int id PK
+        int anfitrion_id FK
+        string titulo
+        string descripcion
+        string direccion
+        string ciudad
+        string pais
+        decimal precio_noche
+        int max_huespedes
+        boolean activa
+    }
+
+    FOTOS_PROPIEDAD {
+        int id PK
+        int propiedad_id FK
+        string url_foto
+        boolean principal
+    }
+
+    RESERVACIONES {
+        int id PK
+        int propiedad_id FK
+        int huesped_id FK
+        date fecha_entrada
+        date fecha_salida
+        int numero_huespedes
+        decimal total
+        string estado
+    }
+
+    PAGOS {
+        int id PK
+        int reservacion_id FK UK
+        decimal monto
+        string metodo_pago
+        string estado
+        datetime fecha_pago
+    }
+
+    MENSAJES {
+        int id PK
+        int reservacion_id FK
+        int emisor_id FK
+        int receptor_id FK
+        string mensaje
+        datetime fecha_envio
+    }
+
+    RESENAS {
+        int id PK
+        int reservacion_id FK
+        int autor_id FK
+        int receptor_id FK
+        int calificacion
+        string comentario
+        datetime fecha_resena
+    }
+
+    USUARIOS ||--o{ USUARIO_ROLES : "id -> usuario_id"
+    ROLES ||--o{ USUARIO_ROLES : "id -> rol_id"
+
+    USUARIOS ||--o{ PROPIEDADES : "id -> anfitrion_id"
+    PROPIEDADES ||--o{ FOTOS_PROPIEDAD : "id -> propiedad_id"
+
+    PROPIEDADES ||--o{ RESERVACIONES : "id -> propiedad_id"
+    USUARIOS ||--o{ RESERVACIONES : "id -> huesped_id"
+
+    RESERVACIONES ||--|| PAGOS : "id -> reservacion_id"
+
+    RESERVACIONES ||--o{ MENSAJES : "id -> reservacion_id"
+    USUARIOS ||--o{ MENSAJES : "id -> emisor_id"
+    USUARIOS ||--o{ MENSAJES : "id -> receptor_id"
+
+    RESERVACIONES ||--o{ RESENAS : "id -> reservacion_id"
+    USUARIOS ||--o{ RESENAS : "id -> autor_id"
+    USUARIOS ||--o{ RESENAS : "id -> receptor_id"

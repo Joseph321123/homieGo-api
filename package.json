@@ -5,7 +5,13 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "docker:up": "docker compose up --build -d",
+    "docker:down": "docker compose down",
+    "docker:reset": "docker compose down -v",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:init": "node scripts/init-db.js"
   },
   "repository": {
     "type": "git",
