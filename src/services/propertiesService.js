@@ -1,10 +1,12 @@
-// Simple in-memory example service
-const sample = [
-  { id: 1, title: 'Depto céntrico', city: 'Ciudad' },
-  { id: 2, title: 'Casa con jardín', city: 'Provincia' },
-]
+const { pool } = require('../config/db')
 
 exports.getAll = async () => {
-  // Here you would query DB; returning sample data for now
-  return Promise.resolve(sample)
+  const { rows } = await pool.query(
+    `SELECT id, titulo AS title, ciudad AS city, pais AS country,
+            precio_noche AS price_per_night, max_huespedes AS max_guests
+     FROM propiedades
+     WHERE activa = TRUE
+     ORDER BY id`
+  )
+  return rows
 }
