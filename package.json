@@ -11,7 +11,8 @@
     "docker:reset": "docker compose down -v",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
-    "db:init": "node scripts/init-db.js"
+    "db:init": "node scripts/init-db.js",
+    "db:seed": "node scripts/seed-db.js"
   },
   "repository": {
     "type": "git",

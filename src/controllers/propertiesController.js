@@ -2,8 +2,9 @@ const propertiesService = require('../services/propertiesService')
 
 exports.listProperties = async (req, res, next) => {
   try {
-    const items = await propertiesService.getAll()
-    res.json({ data: items })
+    const city = req.query.ciudad || req.query.city
+    const items = await propertiesService.getAll({ city })
+    res.json({ data: items, total: items.length })
   } catch (err) {
     next(err)
   }
