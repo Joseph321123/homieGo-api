@@ -7,6 +7,7 @@ services:
       POSTGRES_DB: homiego_db
       POSTGRES_USER: homiego_user
       POSTGRES_PASSWORD: homiego_pass
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
     ports:
       - "5433:5432"
     volumes:
