@@ -32,3 +32,30 @@ exports.getAll = async ({ city } = {}) => {
   )
   return rows
 }
+
+exports.getById = async (id) => {
+  const { rows } = await pool.query(
+    `SELECT p.id,
+            p.titulo AS title,
+            p.descripcion AS description,
+            p.direccion AS address,
+            p.ciudad AS city,
+            p.pais AS country,
+            p.precio_noche AS price_per_night,
+            p.max_huespedes AS max_guests,
+            u.nombre AS host_name,
+            f.url_foto AS photo_url
+     FROM propiedades p
+     JOIN usuarios u ON u.id = p.anfitrion_id
+     LEFT JOIN LATERAL (
+       SELECT url_foto
+       FROM fotos_propiedad
+       WHERE propiedad_id = p.id
+       ORDER BY principal DESC, id ASC
+       LIMIT 1
+     ) f ON TRUE
+     WHERE p.id = $1 AND p.activa = TRUE`,
+    [id]
+  )
+  return rows[0] || null
+}

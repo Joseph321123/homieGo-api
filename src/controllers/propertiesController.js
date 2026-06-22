@@ -9,3 +9,15 @@ exports.listProperties = async (req, res, next) => {
     next(err)
   }
 }
+
+exports.getPropertyById = async (req, res, next) => {
+  try {
+    const property = await propertiesService.getById(req.params.id)
+    if (!property) {
+      return res.status(404).json({ error: 'Propiedad no encontrada' })
+    }
+    res.json({ data: property })
+  } catch (err) {
+    next(err)
+  }
+}
