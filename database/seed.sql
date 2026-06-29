@@ -21,9 +21,16 @@ WHERE anfitrion_id IN (
 
 -- Usuario anfitriona y propiedades de demostracion
 INSERT INTO usuarios (nombre, email, password_hash, telefono, activo)
-VALUES ('Ana García', 'ana@homiego.demo', 'demo-hash-pendiente', '+52 555 123 4567', TRUE)
+VALUES (
+    'Ana García',
+    'ana@homiego.demo',
+    '$2b$10$UUxKOy/EQ9hjJ60qZ4b.RuT5dwwY57qnznZBqC64txIGRnxWDr2AW',
+    '+52 555 123 4567',
+    TRUE
+)
 ON CONFLICT (email) DO UPDATE
 SET nombre = EXCLUDED.nombre,
+    password_hash = EXCLUDED.password_hash,
     telefono = EXCLUDED.telefono,
     activo = EXCLUDED.activo;
 
@@ -32,7 +39,7 @@ SELECT u.id, r.id
 FROM usuarios u
 CROSS JOIN roles r
 WHERE u.email = 'ana@homiego.demo'
-  AND r.nombre = 'anfitrion'
+  AND r.nombre IN ('anfitrion', 'huesped')
 ON CONFLICT (usuario_id, rol_id) DO NOTHING;
 
 INSERT INTO propiedades (
