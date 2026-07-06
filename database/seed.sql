@@ -107,3 +107,24 @@ INSERT INTO fotos_propiedad (propiedad_id, url_foto, principal)
 SELECT p.id, 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800', TRUE
 FROM propiedades p
 WHERE p.titulo = 'Cabaña tranquila para descansar';
+
+-- Usuario administrador de demostracion
+INSERT INTO usuarios (nombre, email, password_hash, activo)
+VALUES (
+    'Admin HomieGo',
+    'admin@homiego.demo',
+    '$2b$10$UUxKOy/EQ9hjJ60qZ4b.RuT5dwwY57qnznZBqC64txIGRnxWDr2AW',
+    TRUE
+)
+ON CONFLICT (email) DO UPDATE
+SET nombre = EXCLUDED.nombre,
+    password_hash = EXCLUDED.password_hash,
+    activo = EXCLUDED.activo;
+
+INSERT INTO usuario_roles (usuario_id, rol_id)
+SELECT u.id, r.id
+FROM usuarios u
+CROSS JOIN roles r
+WHERE u.email = 'admin@homiego.demo'
+  AND r.nombre = 'admin'
+ON CONFLICT (usuario_id, rol_id) DO NOTHING;

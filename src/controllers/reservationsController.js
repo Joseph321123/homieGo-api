@@ -31,3 +31,21 @@ exports.myReservations = async (req, res, next) => {
     next(err)
   }
 }
+
+exports.cancel = async (req, res, next) => {
+  try {
+    const result = await reservationsService.cancel(req.params.id, req.user.sub)
+    res.json({ data: result })
+  } catch (err) {
+    next(err)
+  }
+}
+
+exports.hostReservations = async (req, res, next) => {
+  try {
+    const items = await reservationsService.getByHost(req.user.sub)
+    res.json({ data: items, total: items.length })
+  } catch (err) {
+    next(err)
+  }
+}
