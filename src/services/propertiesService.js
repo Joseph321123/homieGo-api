@@ -1,12 +1,27 @@
 const { pool } = require('../config/db')
 
-exports.getAll = async ({ city } = {}) => {
+exports.getAll = async ({ city, minPrice, maxPrice, guests } = {}) => {
   const values = []
-  let cityFilter = ''
+  const filters = ['p.activa = TRUE']
 
   if (city) {
     values.push(`%${city.trim()}%`)
-    cityFilter = `AND p.ciudad ILIKE $${values.length}`
+    filters.push(`p.ciudad ILIKE $${values.length}`)
+  }
+
+  if (minPrice) {
+    values.push(Number(minPrice))
+    filters.push(`p.precio_noche >= $${values.length}`)
+  }
+
+  if (maxPrice) {
+    values.push(Number(maxPrice))
+    filters.push(`p.precio_noche <= $${values.length}`)
+  }
+
+  if (guests) {
+    values.push(Number(guests))
+    filters.push(`p.max_huespedes >= $${values.length}`)
   }
 
   const { rows } = await pool.query(
@@ -25,8 +40,7 @@ exports.getAll = async ({ city } = {}) => {
        ORDER BY principal DESC, id ASC
        LIMIT 1
      ) f ON TRUE
-     WHERE p.activa = TRUE
-     ${cityFilter}
+     WHERE ${filters.join(' AND ')}
      ORDER BY p.id`,
     values
   )
@@ -140,4 +154,22 @@ exports.getByHost = async (hostId) => {
     [hostId]
   )
   return rows
+}
+
+exports.setActive = async (propertyId, hostId, active) => {
+  const { rows } = await pool.query(
+    `UPDATE propiedades
+     SET activa = $3, updated_at = NOW()
+     WHERE id = $1 AND anfitrion_id = $2
+     RETURNING id, titulo AS title, activa AS active`,
+    [propertyId, hostId, active]
+  )
+
+  if (!rows[0]) {
+    const error = new Error('Propiedad no encontrada')
+    error.status = 404
+    throw error
+  }
+
+  return rows[0]
 }

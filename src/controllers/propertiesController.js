@@ -3,7 +3,11 @@ const propertiesService = require('../services/propertiesService')
 exports.listProperties = async (req, res, next) => {
   try {
     const city = req.query.ciudad || req.query.city
-    const items = await propertiesService.getAll({ city })
+    const minPrice = req.query.min_precio || req.query.min_price
+    const maxPrice = req.query.max_precio || req.query.max_price
+    const guests = req.query.huespedes || req.query.guests
+
+    const items = await propertiesService.getAll({ city, minPrice, maxPrice, guests })
     res.json({ data: items, total: items.length })
   } catch (err) {
     next(err)
@@ -56,6 +60,16 @@ exports.myProperties = async (req, res, next) => {
   try {
     const items = await propertiesService.getByHost(req.user.sub)
     res.json({ data: items, total: items.length })
+  } catch (err) {
+    next(err)
+  }
+}
+
+exports.toggleActive = async (req, res, next) => {
+  try {
+    const active = Boolean(req.body.active)
+    const property = await propertiesService.setActive(req.params.id, req.user.sub, active)
+    res.json({ data: property })
   } catch (err) {
     next(err)
   }
