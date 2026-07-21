@@ -12,7 +12,8 @@
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:init": "node scripts/init-db.js",
-    "db:seed": "node scripts/seed-db.js"
+    "db:seed": "node scripts/seed-db.js",
+    "db:migrate": "node scripts/migrate-db.js"
   },
   "repository": {
     "type": "git",
