@@ -88,3 +88,23 @@ exports.login = async (email, password) => {
 }
 
 exports.getProfile = async (userId) => getUserWithRoles(userId)
+
+exports.updateProfile = async (userId, { nombre, telefono }) => {
+  const { rows } = await pool.query(
+    `UPDATE usuarios
+     SET nombre = COALESCE($2, nombre),
+         telefono = COALESCE($3, telefono),
+         updated_at = NOW()
+     WHERE id = $1 AND activo = TRUE
+     RETURNING id`,
+    [userId, nombre?.trim() || null, telefono?.trim() || null]
+  )
+
+  if (!rows[0]) {
+    const error = new Error('Usuario no encontrado')
+    error.status = 404
+    throw error
+  }
+
+  return getUserWithRoles(userId)
+}

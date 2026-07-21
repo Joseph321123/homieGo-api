@@ -46,3 +46,17 @@ exports.me = async (req, res, next) => {
     next(err)
   }
 }
+
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const { nombre, telefono } = req.body
+    if (!nombre?.trim()) {
+      return res.status(400).json({ error: 'El nombre es obligatorio' })
+    }
+
+    const user = await authService.updateProfile(req.user.sub, { nombre, telefono })
+    res.json({ data: user })
+  } catch (err) {
+    next(err)
+  }
+}

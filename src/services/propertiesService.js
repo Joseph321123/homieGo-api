@@ -173,3 +173,101 @@ exports.setActive = async (propertyId, hostId, active) => {
 
   return rows[0]
 }
+
+exports.update = async (propertyId, hostId, payload) => {
+  const {
+    title,
+    description,
+    address,
+    city,
+    country,
+    price_per_night,
+    max_guests,
+    photo_url,
+  } = payload
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const { rows } = await client.query(
+      `UPDATE propiedades
+       SET titulo = $3,
+           descripcion = $4,
+           direccion = $5,
+           ciudad = $6,
+           pais = $7,
+           precio_noche = $8,
+           max_huespedes = $9,
+           updated_at = NOW()
+       WHERE id = $1 AND anfitrion_id = $2
+       RETURNING id, titulo AS title, ciudad AS city, pais AS country,
+                 precio_noche AS price_per_night, max_huespedes AS max_guests, activa AS active`,
+      [
+        propertyId,
+        hostId,
+        title.trim(),
+        description?.trim() || '',
+        address.trim(),
+        city.trim(),
+        country.trim(),
+        price_per_night,
+        max_guests,
+      ]
+    )
+
+    const property = rows[0]
+    if (!property) {
+      const error = new Error('Propiedad no encontrada')
+      error.status = 404
+      throw error
+    }
+
+    if (photo_url?.trim()) {
+      await client.query(
+        `UPDATE fotos_propiedad SET principal = FALSE WHERE propiedad_id = $1`,
+        [propertyId]
+      )
+      await client.query(
+        `INSERT INTO fotos_propiedad (propiedad_id, url_foto, principal)
+         VALUES ($1, $2, TRUE)`,
+        [propertyId, photo_url.trim()]
+      )
+      property.photo_url = photo_url.trim()
+    }
+
+    await client.query('COMMIT')
+    return property
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+exports.getByIdForHost = async (propertyId, hostId) => {
+  const { rows } = await pool.query(
+    `SELECT p.id,
+            p.titulo AS title,
+            p.descripcion AS description,
+            p.direccion AS address,
+            p.ciudad AS city,
+            p.pais AS country,
+            p.precio_noche AS price_per_night,
+            p.max_huespedes AS max_guests,
+            p.activa AS active,
+            f.url_foto AS photo_url
+     FROM propiedades p
+     LEFT JOIN LATERAL (
+       SELECT url_foto
+       FROM fotos_propiedad
+       WHERE propiedad_id = p.id
+       ORDER BY principal DESC, id ASC
+       LIMIT 1
+     ) f ON TRUE
+     WHERE p.id = $1 AND p.anfitrion_id = $2`,
+    [propertyId, hostId]
+  )
+  return rows[0] || null
+}
