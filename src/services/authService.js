@@ -108,3 +108,25 @@ exports.updateProfile = async (userId, { nombre, telefono }) => {
 
   return getUserWithRoles(userId)
 }
+
+exports.becomeHost = async (userId) => {
+  const user = await getUserWithRoles(userId)
+  if (!user) {
+    const error = new Error('Usuario no encontrado')
+    error.status = 404
+    throw error
+  }
+
+  if (user.roles.includes('anfitrion')) {
+    return user
+  }
+
+  await pool.query(
+    `INSERT INTO usuario_roles (usuario_id, rol_id)
+     SELECT $1, id FROM roles WHERE nombre = 'anfitrion'
+     ON CONFLICT (usuario_id, rol_id) DO NOTHING`,
+    [userId]
+  )
+
+  return getUserWithRoles(userId)
+}

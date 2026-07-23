@@ -108,6 +108,37 @@ SELECT p.id, 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800
 FROM propiedades p
 WHERE p.titulo = 'Cabaña tranquila para descansar';
 
+-- Fotos adicionales para galeria
+INSERT INTO fotos_propiedad (propiedad_id, url_foto, principal)
+SELECT p.id, 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800', FALSE
+FROM propiedades p
+WHERE p.titulo = 'Casa de playa con terraza'
+  AND NOT EXISTS (
+    SELECT 1 FROM fotos_propiedad f
+    WHERE f.propiedad_id = p.id
+      AND f.url_foto = 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800'
+  );
+
+INSERT INTO fotos_propiedad (propiedad_id, url_foto, principal)
+SELECT p.id, 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800', FALSE
+FROM propiedades p
+WHERE p.titulo = 'Suite moderna en el centro'
+  AND NOT EXISTS (
+    SELECT 1 FROM fotos_propiedad f
+    WHERE f.propiedad_id = p.id
+      AND f.url_foto = 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800'
+  );
+
+INSERT INTO fotos_propiedad (propiedad_id, url_foto, principal)
+SELECT p.id, 'https://images.unsplash.com/photo-1518780664697-55e3ad937233?w=800', FALSE
+FROM propiedades p
+WHERE p.titulo = 'Cabaña tranquila para descansar'
+  AND NOT EXISTS (
+    SELECT 1 FROM fotos_propiedad f
+    WHERE f.propiedad_id = p.id
+      AND f.url_foto = 'https://images.unsplash.com/photo-1518780664697-55e3ad937233?w=800'
+  );
+
 -- Usuario administrador de demostracion
 INSERT INTO usuarios (nombre, email, password_hash, activo)
 VALUES (

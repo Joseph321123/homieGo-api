@@ -26,3 +26,30 @@ exports.users = async (req, res, next) => {
     next(err)
   }
 }
+
+exports.properties = async (req, res, next) => {
+  try {
+    const items = await adminService.getProperties()
+    res.json({ data: items, total: items.length })
+  } catch (err) {
+    next(err)
+  }
+}
+
+exports.setUserActive = async (req, res, next) => {
+  try {
+    const result = await adminService.setUserActive(req.params.id, Boolean(req.body.active))
+    res.json({ data: result })
+  } catch (err) {
+    next(err)
+  }
+}
+
+exports.setPropertyActive = async (req, res, next) => {
+  try {
+    const result = await adminService.setPropertyActive(req.params.id, Boolean(req.body.active))
+    res.json({ data: result })
+  } catch (err) {
+    next(err)
+  }
+}

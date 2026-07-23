@@ -44,3 +44,51 @@ exports.getUsers = async () => {
   )
   return rows
 }
+
+exports.setUserActive = async (userId, active) => {
+  const { rows } = await pool.query(
+    `UPDATE usuarios
+     SET activo = $2, updated_at = NOW()
+     WHERE id = $1
+     RETURNING id, nombre, email, activo`,
+    [userId, active]
+  )
+
+  if (!rows[0]) {
+    const error = new Error('Usuario no encontrado')
+    error.status = 404
+    throw error
+  }
+
+  return rows[0]
+}
+
+exports.setPropertyActive = async (propertyId, active) => {
+  const { rows } = await pool.query(
+    `UPDATE propiedades
+     SET activa = $2, updated_at = NOW()
+     WHERE id = $1
+     RETURNING id, titulo AS title, activa AS active`,
+    [propertyId, active]
+  )
+
+  if (!rows[0]) {
+    const error = new Error('Propiedad no encontrada')
+    error.status = 404
+    throw error
+  }
+
+  return rows[0]
+}
+
+exports.getProperties = async () => {
+  const { rows } = await pool.query(
+    `SELECT p.id, p.titulo AS title, p.ciudad AS city, p.activa AS active,
+            u.nombre AS host_name, p.precio_noche AS price_per_night
+     FROM propiedades p
+     JOIN usuarios u ON u.id = p.anfitrion_id
+     ORDER BY p.id DESC
+     LIMIT 50`
+  )
+  return rows
+}
