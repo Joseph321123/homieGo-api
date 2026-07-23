@@ -6,8 +6,25 @@ exports.listProperties = async (req, res, next) => {
     const minPrice = req.query.min_precio || req.query.min_price
     const maxPrice = req.query.max_precio || req.query.max_price
     const guests = req.query.huespedes || req.query.guests
+    const checkIn = req.query.check_in || req.query.entrada
+    const checkOut = req.query.check_out || req.query.salida
 
-    const items = await propertiesService.getAll({ city, minPrice, maxPrice, guests })
+    if ((checkIn && !checkOut) || (!checkIn && checkOut)) {
+      return res.status(400).json({ error: 'Debes enviar check_in y check_out juntos' })
+    }
+
+    if (checkIn && checkOut && new Date(checkOut) <= new Date(checkIn)) {
+      return res.status(400).json({ error: 'La fecha de salida debe ser posterior a la de entrada' })
+    }
+
+    const items = await propertiesService.getAll({
+      city,
+      minPrice,
+      maxPrice,
+      guests,
+      checkIn,
+      checkOut,
+    })
     res.json({ data: items, total: items.length })
   } catch (err) {
     next(err)

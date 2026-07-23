@@ -1,6 +1,8 @@
 const { pool } = require('../config/db')
+const availabilityService = require('./availabilityService')
+const photosService = require('./photosService')
 
-exports.getAll = async ({ city, minPrice, maxPrice, guests } = {}) => {
+exports.getAll = async ({ city, minPrice, maxPrice, guests, checkIn, checkOut } = {}) => {
   const values = []
   const filters = ['p.activa = TRUE']
 
@@ -22,6 +24,18 @@ exports.getAll = async ({ city, minPrice, maxPrice, guests } = {}) => {
   if (guests) {
     values.push(Number(guests))
     filters.push(`p.max_huespedes >= $${values.length}`)
+  }
+
+  if (checkIn && checkOut) {
+    values.push(checkIn)
+    values.push(checkOut)
+    filters.push(`NOT EXISTS (
+      SELECT 1 FROM reservaciones r
+      WHERE r.propiedad_id = p.id
+        AND r.estado IN ('pendiente', 'confirmada')
+        AND r.fecha_entrada < $${values.length}
+        AND r.fecha_salida > $${values.length - 1}
+    )`)
   }
 
   const { rows } = await pool.query(
@@ -71,7 +85,13 @@ exports.getById = async (id) => {
      WHERE p.id = $1 AND p.activa = TRUE`,
     [id]
   )
-  return rows[0] || null
+
+  const property = rows[0]
+  if (!property) return null
+
+  property.photos = await photosService.listByProperty(id)
+  property.blocked_dates = await availabilityService.getBlockedRanges(id)
+  return property
 }
 
 exports.create = async (hostId, payload) => {

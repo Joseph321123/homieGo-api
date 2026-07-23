@@ -60,3 +60,12 @@ exports.updateProfile = async (req, res, next) => {
     next(err)
   }
 }
+
+exports.becomeHost = async (req, res, next) => {
+  try {
+    const user = await authService.becomeHost(req.user.sub)
+    res.json({ data: user })
+  } catch (err) {
+    next(err)
+  }
+}
