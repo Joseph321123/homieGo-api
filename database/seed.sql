@@ -5,7 +5,31 @@ INSERT INTO roles (nombre) VALUES
     ('admin')
 ON CONFLICT (nombre) DO NOTHING;
 
--- Limpia datos demo previos (evita duplicados y texto corrupto por encoding)
+-- Limpia datos demo previos (hijos primero: reservas bloquean borrar propiedades)
+DELETE FROM reservaciones
+WHERE propiedad_id IN (
+    SELECT p.id
+    FROM propiedades p
+    JOIN usuarios u ON u.id = p.anfitrion_id
+    WHERE u.email = 'ana@homiego.demo'
+);
+
+DELETE FROM favoritos
+WHERE propiedad_id IN (
+    SELECT p.id
+    FROM propiedades p
+    JOIN usuarios u ON u.id = p.anfitrion_id
+    WHERE u.email = 'ana@homiego.demo'
+);
+
+DELETE FROM propiedad_comodidades
+WHERE propiedad_id IN (
+    SELECT p.id
+    FROM propiedades p
+    JOIN usuarios u ON u.id = p.anfitrion_id
+    WHERE u.email = 'ana@homiego.demo'
+);
+
 DELETE FROM fotos_propiedad
 WHERE propiedad_id IN (
     SELECT p.id
