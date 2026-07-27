@@ -1,4 +1,5 @@
 const { pool } = require('../config/db')
+const notificationsService = require('./notificationsService')
 
 const getReservationAccess = async (reservationId, userId) => {
   const { rows } = await pool.query(
@@ -59,7 +60,14 @@ exports.getConversations = async (userId) => {
               WHERE m.reservacion_id = r.id
               ORDER BY m.fecha_envio DESC
               LIMIT 1
-            ) AS last_message_at
+            ) AS last_message_at,
+            (
+              SELECT COUNT(*)::int
+              FROM mensajes m
+              WHERE m.reservacion_id = r.id
+                AND m.receptor_id = $1
+                AND m.leido = FALSE
+            ) AS unread_count
      FROM reservaciones r
      JOIN propiedades p ON p.id = r.propiedad_id
      JOIN usuarios g ON g.id = r.huesped_id
@@ -74,8 +82,27 @@ exports.getConversations = async (userId) => {
   return rows
 }
 
+exports.unreadCount = async (userId) => {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS total
+     FROM mensajes
+     WHERE receptor_id = $1 AND leido = FALSE`,
+    [userId]
+  )
+  return rows[0].total
+}
+
 exports.getByReservation = async (reservationId, userId) => {
   const reservation = await getReservationAccess(reservationId, userId)
+
+  await pool.query(
+    `UPDATE mensajes
+     SET leido = TRUE
+     WHERE reservacion_id = $1
+       AND receptor_id = $2
+       AND leido = FALSE`,
+    [reservationId, userId]
+  )
 
   const { rows } = await pool.query(
     `SELECT m.id,
@@ -83,6 +110,7 @@ exports.getByReservation = async (reservationId, userId) => {
             m.fecha_envio AS sent_at,
             m.emisor_id AS sender_id,
             m.receptor_id AS receiver_id,
+            m.leido AS read,
             u.nombre AS sender_name
      FROM mensajes m
      JOIN usuarios u ON u.id = m.emisor_id
@@ -110,11 +138,23 @@ exports.send = async (reservationId, senderId, message) => {
     reservation.guest_id === senderId ? reservation.host_id : reservation.guest_id
 
   const { rows } = await pool.query(
-    `INSERT INTO mensajes (reservacion_id, emisor_id, receptor_id, mensaje)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, mensaje AS message, fecha_envio AS sent_at, emisor_id AS sender_id, receptor_id AS receiver_id`,
+    `INSERT INTO mensajes (reservacion_id, emisor_id, receptor_id, mensaje, leido)
+     VALUES ($1, $2, $3, $4, FALSE)
+     RETURNING id, mensaje AS message, fecha_envio AS sent_at, emisor_id AS sender_id,
+               receptor_id AS receiver_id, leido AS read`,
     [reservationId, senderId, receiverId, message.trim()]
   )
+
+  const senderName =
+    reservation.guest_id === senderId ? reservation.guest_name : reservation.host_name
+
+  await notificationsService.create({
+    usuario_id: receiverId,
+    tipo: 'mensaje',
+    titulo: 'Nuevo mensaje',
+    mensaje: `${senderName} te escribió sobre "${reservation.property_title}"`,
+    enlace: `/messages?reserva=${reservationId}`,
+  })
 
   return rows[0]
 }

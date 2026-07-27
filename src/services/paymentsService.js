@@ -1,4 +1,5 @@
 const { pool } = require('../config/db')
+const notificationsService = require('./notificationsService')
 
 exports.createForReservation = async (client, reservationId, amount) => {
   await client.query(
@@ -14,8 +15,10 @@ exports.payReservation = async (reservationId, userId, metodo_pago) => {
     await client.query('BEGIN')
 
     const { rows } = await client.query(
-      `SELECT r.id, r.huesped_id, r.estado, r.total
+      `SELECT r.id, r.huesped_id, r.estado, r.total,
+              p.anfitrion_id, p.titulo
        FROM reservaciones r
+       JOIN propiedades p ON p.id = r.propiedad_id
        WHERE r.id = $1`,
       [reservationId]
     )
@@ -50,6 +53,23 @@ exports.payReservation = async (reservationId, userId, metodo_pago) => {
     )
 
     await client.query('COMMIT')
+
+    await notificationsService.create({
+      usuario_id: reservation.anfitrion_id,
+      tipo: 'pago',
+      titulo: 'Pago recibido',
+      mensaje: `Se confirmó el pago de una reserva en "${reservation.titulo}".`,
+      enlace: '/host',
+    })
+
+    await notificationsService.create({
+      usuario_id: userId,
+      tipo: 'pago',
+      titulo: 'Reserva confirmada',
+      mensaje: `Tu pago fue aprobado. La reserva en "${reservation.titulo}" quedó confirmada.`,
+      enlace: '/reservations',
+    })
+
     return { reservation_id: reservationId, status: 'confirmada', payment_status: 'aprobado' }
   } catch (err) {
     await client.query('ROLLBACK')

@@ -1,10 +1,12 @@
 const express = require('express')
 const authController = require('../controllers/authController')
 const adminController = require('../controllers/adminController')
+const amenitiesController = require('../controllers/amenitiesController')
 const availabilityController = require('../controllers/availabilityController')
 const favoritesController = require('../controllers/favoritesController')
 const hostController = require('../controllers/hostController')
 const messagesController = require('../controllers/messagesController')
+const notificationsController = require('../controllers/notificationsController')
 const paymentsController = require('../controllers/paymentsController')
 const photosController = require('../controllers/photosController')
 const propertiesController = require('../controllers/propertiesController')
@@ -18,6 +20,7 @@ router.post('/auth/register', authController.register)
 router.post('/auth/login', authController.login)
 router.get('/auth/me', authenticate, authController.me)
 router.patch('/auth/me', authenticate, authController.updateProfile)
+router.post('/auth/change-password', authenticate, authController.changePassword)
 router.post('/auth/become-host', authenticate, authController.becomeHost)
 
 router.get('/admin/dashboard', authenticate, requireRole('admin'), adminController.dashboard)
@@ -26,6 +29,13 @@ router.get('/admin/users', authenticate, requireRole('admin'), adminController.u
 router.get('/admin/properties', authenticate, requireRole('admin'), adminController.properties)
 router.patch('/admin/users/:id/active', authenticate, requireRole('admin'), adminController.setUserActive)
 router.patch('/admin/properties/:id/active', authenticate, requireRole('admin'), adminController.setPropertyActive)
+
+router.get('/amenities', amenitiesController.list)
+
+router.get('/notifications', authenticate, notificationsController.list)
+router.get('/notifications/unread-count', authenticate, notificationsController.unreadCount)
+router.patch('/notifications/read-all', authenticate, notificationsController.markAllRead)
+router.patch('/notifications/:id/read', authenticate, notificationsController.markRead)
 
 router.get('/favorites', authenticate, favoritesController.list)
 router.get('/favorites/ids', authenticate, favoritesController.ids)
@@ -39,6 +49,13 @@ router.post('/properties', authenticate, requireRole('anfitrion'), propertiesCon
 router.get('/properties/mine/:id', authenticate, requireRole('anfitrion'), propertiesController.getMyProperty)
 router.put('/properties/:id', authenticate, requireRole('anfitrion'), propertiesController.updateProperty)
 router.patch('/properties/:id/active', authenticate, requireRole('anfitrion'), propertiesController.toggleActive)
+router.get('/properties/:id/amenities', amenitiesController.listByProperty)
+router.put(
+  '/properties/:id/amenities',
+  authenticate,
+  requireRole('anfitrion'),
+  amenitiesController.setForProperty
+)
 router.get('/properties', propertiesController.listProperties)
 router.get('/properties/:id/availability', availabilityController.getAvailability)
 router.get('/properties/:id/availability/check', availabilityController.checkAvailability)
@@ -55,6 +72,7 @@ router.post('/reservations', authenticate, requireRole('huesped', 'anfitrion'), 
 router.post('/reservations/:id/pay', authenticate, paymentsController.pay)
 router.patch('/reservations/:id/cancel', authenticate, reservationsController.cancel)
 
+router.get('/messages/unread-count', authenticate, messagesController.unreadCount)
 router.get('/messages', authenticate, messagesController.listConversations)
 router.get('/messages/:reservationId', authenticate, messagesController.getConversation)
 router.post('/messages/:reservationId', authenticate, messagesController.send)

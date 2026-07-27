@@ -159,3 +159,41 @@ CROSS JOIN roles r
 WHERE u.email = 'admin@homiego.demo'
   AND r.nombre = 'admin'
 ON CONFLICT (usuario_id, rol_id) DO NOTHING;
+
+-- Comodidades demo por propiedad
+INSERT INTO comodidades (nombre, icono) VALUES
+    ('WiFi', 'wifi'),
+    ('Aire acondicionado', 'ac'),
+    ('Cocina', 'kitchen'),
+    ('Estacionamiento', 'parking'),
+    ('Piscina', 'pool'),
+    ('Lavadora', 'washer'),
+    ('TV', 'tv'),
+    ('Mascotas permitidas', 'pets'),
+    ('Terraza', 'terrace'),
+    ('Calefaccion', 'heat')
+ON CONFLICT (nombre) DO NOTHING;
+
+INSERT INTO propiedad_comodidades (propiedad_id, comodidad_id)
+SELECT p.id, c.id
+FROM propiedades p
+CROSS JOIN comodidades c
+WHERE p.titulo = 'Casa de playa con terraza'
+  AND c.nombre IN ('WiFi', 'Cocina', 'Piscina', 'Terraza', 'Estacionamiento')
+ON CONFLICT (propiedad_id, comodidad_id) DO NOTHING;
+
+INSERT INTO propiedad_comodidades (propiedad_id, comodidad_id)
+SELECT p.id, c.id
+FROM propiedades p
+CROSS JOIN comodidades c
+WHERE p.titulo = 'Suite moderna en el centro'
+  AND c.nombre IN ('WiFi', 'Aire acondicionado', 'TV', 'Lavadora')
+ON CONFLICT (propiedad_id, comodidad_id) DO NOTHING;
+
+INSERT INTO propiedad_comodidades (propiedad_id, comodidad_id)
+SELECT p.id, c.id
+FROM propiedades p
+CROSS JOIN comodidades c
+WHERE p.titulo = 'Cabaña tranquila para descansar'
+  AND c.nombre IN ('WiFi', 'Cocina', 'Estacionamiento', 'Calefaccion', 'Mascotas permitidas')
+ON CONFLICT (propiedad_id, comodidad_id) DO NOTHING;
