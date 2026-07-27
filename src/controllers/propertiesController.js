@@ -1,5 +1,14 @@
 const propertiesService = require('../services/propertiesService')
 
+const parseAmenityIds = (raw) => {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw.map(Number).filter(Boolean)
+  return String(raw)
+    .split(',')
+    .map((part) => Number(part.trim()))
+    .filter(Boolean)
+}
+
 exports.listProperties = async (req, res, next) => {
   try {
     const city = req.query.ciudad || req.query.city
@@ -8,6 +17,10 @@ exports.listProperties = async (req, res, next) => {
     const guests = req.query.huespedes || req.query.guests
     const checkIn = req.query.check_in || req.query.entrada
     const checkOut = req.query.check_out || req.query.salida
+    const amenityIds = parseAmenityIds(req.query.amenities || req.query.comodidades)
+    const sort = req.query.sort || req.query.ordenar || 'id'
+    const page = req.query.page || req.query.pagina || 1
+    const limit = req.query.limit || req.query.limite || 12
 
     if ((checkIn && !checkOut) || (!checkIn && checkOut)) {
       return res.status(400).json({ error: 'Debes enviar check_in y check_out juntos' })
@@ -17,15 +30,20 @@ exports.listProperties = async (req, res, next) => {
       return res.status(400).json({ error: 'La fecha de salida debe ser posterior a la de entrada' })
     }
 
-    const items = await propertiesService.getAll({
+    const result = await propertiesService.getAll({
       city,
       minPrice,
       maxPrice,
       guests,
       checkIn,
       checkOut,
+      amenityIds,
+      sort,
+      page,
+      limit,
     })
-    res.json({ data: items, total: items.length })
+
+    res.json(result)
   } catch (err) {
     next(err)
   }
@@ -45,8 +63,17 @@ exports.getPropertyById = async (req, res, next) => {
 
 exports.createProperty = async (req, res, next) => {
   try {
-    const { title, description, address, city, country, price_per_night, max_guests, photo_url } =
-      req.body
+    const {
+      title,
+      description,
+      address,
+      city,
+      country,
+      price_per_night,
+      max_guests,
+      photo_url,
+      amenity_ids,
+    } = req.body
 
     if (!title?.trim() || !address?.trim() || !city?.trim() || !country?.trim()) {
       return res.status(400).json({ error: 'Título, dirección, ciudad y país son obligatorios' })
@@ -65,6 +92,7 @@ exports.createProperty = async (req, res, next) => {
       price_per_night: Number(price_per_night),
       max_guests: Number(max_guests),
       photo_url,
+      amenity_ids,
     })
 
     res.status(201).json({ data: property })
@@ -94,8 +122,17 @@ exports.toggleActive = async (req, res, next) => {
 
 exports.updateProperty = async (req, res, next) => {
   try {
-    const { title, description, address, city, country, price_per_night, max_guests, photo_url } =
-      req.body
+    const {
+      title,
+      description,
+      address,
+      city,
+      country,
+      price_per_night,
+      max_guests,
+      photo_url,
+      amenity_ids,
+    } = req.body
 
     if (!title?.trim() || !address?.trim() || !city?.trim() || !country?.trim()) {
       return res.status(400).json({ error: 'Título, dirección, ciudad y país son obligatorios' })
@@ -114,6 +151,7 @@ exports.updateProperty = async (req, res, next) => {
       price_per_night: Number(price_per_night),
       max_guests: Number(max_guests),
       photo_url,
+      amenity_ids,
     })
 
     res.json({ data: property })

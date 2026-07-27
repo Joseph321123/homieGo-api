@@ -1,8 +1,28 @@
 const { pool } = require('../config/db')
 const availabilityService = require('./availabilityService')
 const photosService = require('./photosService')
+const amenitiesService = require('./amenitiesService')
 
-exports.getAll = async ({ city, minPrice, maxPrice, guests, checkIn, checkOut } = {}) => {
+const SORT_MAP = {
+  price_asc: 'p.precio_noche ASC, p.id ASC',
+  price_desc: 'p.precio_noche DESC, p.id ASC',
+  rating_desc: 'rating_avg DESC NULLS LAST, p.id ASC',
+  newest: 'p.created_at DESC, p.id DESC',
+  id: 'p.id ASC',
+}
+
+exports.getAll = async ({
+  city,
+  minPrice,
+  maxPrice,
+  guests,
+  checkIn,
+  checkOut,
+  amenityIds = [],
+  sort = 'id',
+  page = 1,
+  limit = 12,
+} = {}) => {
   const values = []
   const filters = ['p.activa = TRUE']
 
@@ -38,6 +58,36 @@ exports.getAll = async ({ city, minPrice, maxPrice, guests, checkIn, checkOut } 
     )`)
   }
 
+  const uniqueAmenities = [...new Set(amenityIds.map(Number).filter(Boolean))]
+  if (uniqueAmenities.length > 0) {
+    values.push(uniqueAmenities)
+    values.push(uniqueAmenities.length)
+    filters.push(`(
+      SELECT COUNT(DISTINCT pc.comodidad_id)
+      FROM propiedad_comodidades pc
+      WHERE pc.propiedad_id = p.id
+        AND pc.comodidad_id = ANY($${values.length - 1}::int[])
+    ) = $${values.length}`)
+  }
+
+  const orderBy = SORT_MAP[sort] || SORT_MAP.id
+  const safeLimit = Math.min(Math.max(Number(limit) || 12, 1), 50)
+  const safePage = Math.max(Number(page) || 1, 1)
+  const offset = (safePage - 1) * safeLimit
+
+  const whereSql = filters.join(' AND ')
+
+  const countResult = await pool.query(
+    `SELECT COUNT(*)::int AS total
+     FROM propiedades p
+     WHERE ${whereSql}`,
+    values
+  )
+  const total = countResult.rows[0].total
+
+  values.push(safeLimit)
+  values.push(offset)
+
   const { rows } = await pool.query(
     `SELECT p.id,
             p.titulo AS title,
@@ -45,7 +95,9 @@ exports.getAll = async ({ city, minPrice, maxPrice, guests, checkIn, checkOut } 
             p.pais AS country,
             p.precio_noche AS price_per_night,
             p.max_huespedes AS max_guests,
-            f.url_foto AS photo_url
+            f.url_foto AS photo_url,
+            ROUND(AVG(re.calificacion)::numeric, 1) AS rating_avg,
+            COUNT(re.id)::int AS reviews_count
      FROM propiedades p
      LEFT JOIN LATERAL (
        SELECT url_foto
@@ -54,11 +106,25 @@ exports.getAll = async ({ city, minPrice, maxPrice, guests, checkIn, checkOut } 
        ORDER BY principal DESC, id ASC
        LIMIT 1
      ) f ON TRUE
-     WHERE ${filters.join(' AND ')}
-     ORDER BY p.id`,
+     LEFT JOIN reservaciones r ON r.propiedad_id = p.id
+     LEFT JOIN resenas re ON re.reservacion_id = r.id
+     WHERE ${whereSql}
+     GROUP BY p.id, f.url_foto
+     ORDER BY ${orderBy}
+     LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   )
-  return rows
+
+  return {
+    data: rows.map((row) => ({
+      ...row,
+      rating_avg: row.rating_avg ? Number(row.rating_avg) : null,
+    })),
+    total,
+    page: safePage,
+    limit: safeLimit,
+    total_pages: Math.max(Math.ceil(total / safeLimit), 1),
+  }
 }
 
 exports.getById = async (id) => {
@@ -72,7 +138,19 @@ exports.getById = async (id) => {
             p.precio_noche AS price_per_night,
             p.max_huespedes AS max_guests,
             u.nombre AS host_name,
-            f.url_foto AS photo_url
+            f.url_foto AS photo_url,
+            (
+              SELECT ROUND(AVG(re.calificacion)::numeric, 1)
+              FROM resenas re
+              JOIN reservaciones r ON r.id = re.reservacion_id
+              WHERE r.propiedad_id = p.id
+            ) AS rating_avg,
+            (
+              SELECT COUNT(*)::int
+              FROM resenas re
+              JOIN reservaciones r ON r.id = re.reservacion_id
+              WHERE r.propiedad_id = p.id
+            ) AS reviews_count
      FROM propiedades p
      JOIN usuarios u ON u.id = p.anfitrion_id
      LEFT JOIN LATERAL (
@@ -89,8 +167,10 @@ exports.getById = async (id) => {
   const property = rows[0]
   if (!property) return null
 
+  property.rating_avg = property.rating_avg ? Number(property.rating_avg) : null
   property.photos = await photosService.listByProperty(id)
   property.blocked_dates = await availabilityService.getBlockedRanges(id)
+  property.amenities = await amenitiesService.listByProperty(id)
   return property
 }
 
@@ -104,6 +184,7 @@ exports.create = async (hostId, payload) => {
     price_per_night,
     max_guests,
     photo_url,
+    amenity_ids = [],
   } = payload
 
   const client = await pool.connect()
@@ -141,7 +222,18 @@ exports.create = async (hostId, payload) => {
       property.photo_url = photo_url.trim()
     }
 
+    const uniqueIds = [...new Set((amenity_ids || []).map(Number).filter(Boolean))]
+    for (const amenityId of uniqueIds) {
+      await client.query(
+        `INSERT INTO propiedad_comodidades (propiedad_id, comodidad_id)
+         VALUES ($1, $2)
+         ON CONFLICT (propiedad_id, comodidad_id) DO NOTHING`,
+        [property.id, amenityId]
+      )
+    }
+
     await client.query('COMMIT')
+    property.amenities = await amenitiesService.listByProperty(property.id)
     return property
   } catch (err) {
     await client.query('ROLLBACK')
@@ -204,6 +296,7 @@ exports.update = async (propertyId, hostId, payload) => {
     price_per_night,
     max_guests,
     photo_url,
+    amenity_ids,
   } = payload
 
   const client = await pool.connect()
@@ -256,7 +349,21 @@ exports.update = async (propertyId, hostId, payload) => {
       property.photo_url = photo_url.trim()
     }
 
+    if (Array.isArray(amenity_ids)) {
+      await client.query(`DELETE FROM propiedad_comodidades WHERE propiedad_id = $1`, [propertyId])
+      const uniqueIds = [...new Set(amenity_ids.map(Number).filter(Boolean))]
+      for (const amenityId of uniqueIds) {
+        await client.query(
+          `INSERT INTO propiedad_comodidades (propiedad_id, comodidad_id)
+           VALUES ($1, $2)
+           ON CONFLICT (propiedad_id, comodidad_id) DO NOTHING`,
+          [propertyId, amenityId]
+        )
+      }
+    }
+
     await client.query('COMMIT')
+    property.amenities = await amenitiesService.listByProperty(propertyId)
     return property
   } catch (err) {
     await client.query('ROLLBACK')
@@ -289,5 +396,8 @@ exports.getByIdForHost = async (propertyId, hostId) => {
      WHERE p.id = $1 AND p.anfitrion_id = $2`,
     [propertyId, hostId]
   )
-  return rows[0] || null
+  const property = rows[0]
+  if (!property) return null
+  property.amenities = await amenitiesService.listByProperty(propertyId)
+  return property
 }

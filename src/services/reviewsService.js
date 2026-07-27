@@ -1,4 +1,5 @@
 const { pool } = require('../config/db')
+const notificationsService = require('./notificationsService')
 
 exports.create = async (authorId, payload) => {
   const { reservation_id, rating, comment } = payload
@@ -8,9 +9,13 @@ exports.create = async (authorId, payload) => {
             r.huesped_id,
             r.estado,
             r.fecha_salida,
-            p.anfitrion_id AS host_id
+            r.propiedad_id AS property_id,
+            p.anfitrion_id AS host_id,
+            p.titulo AS property_title,
+            u.nombre AS author_name
      FROM reservaciones r
      JOIN propiedades p ON p.id = r.propiedad_id
+     JOIN usuarios u ON u.id = r.huesped_id
      WHERE r.id = $1`,
     [reservation_id]
   )
@@ -34,6 +39,14 @@ exports.create = async (authorId, payload) => {
      RETURNING id, calificacion, comentario, fecha_resena`,
     [reservation_id, authorId, reservation.host_id, rating, comment?.trim() || null]
   )
+
+  await notificationsService.create({
+    usuario_id: reservation.host_id,
+    tipo: 'resena',
+    titulo: 'Nueva reseña',
+    mensaje: `${reservation.author_name} calificó "${reservation.property_title}" con ${rating}/5.`,
+    enlace: `/properties/${reservation.property_id}`,
+  })
 
   return created[0]
 }

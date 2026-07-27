@@ -130,3 +130,32 @@ exports.becomeHost = async (userId) => {
 
   return getUserWithRoles(userId)
 }
+
+exports.changePassword = async (userId, { currentPassword, newPassword }) => {
+  const { rows } = await pool.query(
+    `SELECT id, password_hash FROM usuarios WHERE id = $1 AND activo = TRUE`,
+    [userId]
+  )
+
+  const user = rows[0]
+  if (!user) {
+    const error = new Error('Usuario no encontrado')
+    error.status = 404
+    throw error
+  }
+
+  const valid = await bcrypt.compare(currentPassword, user.password_hash)
+  if (!valid) {
+    const error = new Error('La contraseña actual es incorrecta')
+    error.status = 400
+    throw error
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10)
+  await pool.query(
+    `UPDATE usuarios SET password_hash = $2, updated_at = NOW() WHERE id = $1`,
+    [userId, passwordHash]
+  )
+
+  return { ok: true }
+}

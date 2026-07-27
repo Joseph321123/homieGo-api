@@ -69,3 +69,27 @@ exports.becomeHost = async (req, res, next) => {
     next(err)
   }
 }
+
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { current_password, new_password, currentPassword, newPassword } = req.body
+    const current = current_password || currentPassword
+    const nextPassword = new_password || newPassword
+
+    if (!current || !nextPassword) {
+      return res.status(400).json({ error: 'Contraseña actual y nueva son obligatorias' })
+    }
+
+    if (nextPassword.length < 6) {
+      return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres' })
+    }
+
+    const result = await authService.changePassword(req.user.sub, {
+      currentPassword: current,
+      newPassword: nextPassword,
+    })
+    res.json({ data: result })
+  } catch (err) {
+    next(err)
+  }
+}

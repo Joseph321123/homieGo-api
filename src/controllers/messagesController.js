@@ -9,6 +9,15 @@ exports.listConversations = async (req, res, next) => {
   }
 }
 
+exports.unreadCount = async (req, res, next) => {
+  try {
+    const total = await messagesService.unreadCount(req.user.sub)
+    res.json({ data: { unread: total } })
+  } catch (err) {
+    next(err)
+  }
+}
+
 exports.getConversation = async (req, res, next) => {
   try {
     const result = await messagesService.getByReservation(req.params.reservationId, req.user.sub)

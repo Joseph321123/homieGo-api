@@ -1,5 +1,6 @@
 const { pool } = require('../config/db')
 const paymentsService = require('./paymentsService')
+const notificationsService = require('./notificationsService')
 
 const calculateNights = (checkIn, checkOut) => {
   const start = new Date(`${checkIn}T00:00:00`)
@@ -19,7 +20,7 @@ exports.create = async (guestId, payload) => {
   }
 
   const { rows: propertyRows } = await pool.query(
-    `SELECT id, titulo, precio_noche, max_huespedes, activa
+    `SELECT id, titulo, precio_noche, max_huespedes, activa, anfitrion_id
      FROM propiedades
      WHERE id = $1`,
     [property_id]
@@ -74,6 +75,16 @@ exports.create = async (guestId, payload) => {
     const reservation = rows[0]
     await paymentsService.createForReservation(client, reservation.id, total)
     await client.query('COMMIT')
+
+    if (property.anfitrion_id !== guestId) {
+      await notificationsService.create({
+        usuario_id: property.anfitrion_id,
+        tipo: 'reserva',
+        titulo: 'Nueva solicitud de reserva',
+        mensaje: `Tienes una nueva reserva pendiente en "${property.titulo}" del ${check_in} al ${check_out}.`,
+        enlace: '/host',
+      })
+    }
 
     return {
       ...reservation,
@@ -130,6 +141,15 @@ exports.getByGuest = async (guestId) => {
 }
 
 exports.cancel = async (reservationId, userId) => {
+  const { rows: before } = await pool.query(
+    `SELECT r.id, r.huesped_id, p.anfitrion_id, p.titulo
+     FROM reservaciones r
+     JOIN propiedades p ON p.id = r.propiedad_id
+     WHERE r.id = $1`,
+    [reservationId]
+  )
+  const meta = before[0]
+
   const { rows } = await pool.query(
     `UPDATE reservaciones
      SET estado = 'cancelada', updated_at = NOW()
@@ -152,6 +172,16 @@ exports.cancel = async (reservationId, userId) => {
      WHERE reservacion_id = $1 AND estado = 'aprobado'`,
     [reservationId]
   )
+
+  if (meta?.anfitrion_id) {
+    await notificationsService.create({
+      usuario_id: meta.anfitrion_id,
+      tipo: 'cancelacion',
+      titulo: 'Reserva cancelada',
+      mensaje: `Se canceló una reserva en "${meta.titulo}".`,
+      enlace: '/host',
+    })
+  }
 
   return rows[0]
 }
