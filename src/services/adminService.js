@@ -6,8 +6,9 @@ exports.getDashboard = async () => {
        (SELECT COUNT(*)::int FROM usuarios WHERE activo = TRUE) AS users,
        (SELECT COUNT(*)::int FROM propiedades WHERE activa = TRUE) AS properties,
        (SELECT COUNT(*)::int FROM reservaciones) AS reservations,
-       (SELECT COUNT(*)::int FROM pagos WHERE estado = 'aprobado') AS payments,
-       (SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE estado = 'aprobado') AS revenue`
+       (SELECT COUNT(*)::int FROM pagos WHERE estado IN ('retenido', 'liberado', 'aprobado')) AS payments,
+       (SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE estado IN ('retenido', 'liberado', 'aprobado')) AS revenue,
+       (SELECT COUNT(*)::int FROM usuarios WHERE identidad_estado = 'pendiente') AS pending_identities`
   )
   return rows[0]
 }
@@ -35,12 +36,23 @@ exports.getReservations = async () => {
 exports.getUsers = async () => {
   const { rows } = await pool.query(
     `SELECT u.id, u.nombre, u.email, u.activo,
+            u.documento_identidad, u.documento_url, u.identidad_estado,
             COALESCE(array_agg(r.nombre) FILTER (WHERE r.nombre IS NOT NULL), '{}') AS roles
      FROM usuarios u
      LEFT JOIN usuario_roles ur ON ur.usuario_id = u.id
      LEFT JOIN roles r ON r.id = ur.rol_id
      GROUP BY u.id
      ORDER BY u.id`
+  )
+  return rows
+}
+
+exports.getPendingIdentities = async () => {
+  const { rows } = await pool.query(
+    `SELECT id, nombre, email, documento_identidad, documento_url, identidad_estado, created_at
+     FROM usuarios
+     WHERE identidad_estado = 'pendiente'
+     ORDER BY updated_at DESC`
   )
   return rows
 }

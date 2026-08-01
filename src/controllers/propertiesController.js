@@ -73,6 +73,12 @@ exports.createProperty = async (req, res, next) => {
       max_guests,
       photo_url,
       amenity_ids,
+      house_rules,
+      latitude,
+      longitude,
+      reglas,
+      latitud,
+      longitud,
     } = req.body
 
     if (!title?.trim() || !address?.trim() || !city?.trim() || !country?.trim()) {
@@ -93,6 +99,9 @@ exports.createProperty = async (req, res, next) => {
       max_guests: Number(max_guests),
       photo_url,
       amenity_ids,
+      house_rules: house_rules || reglas,
+      latitude: latitude != null ? Number(latitude) : latitud != null ? Number(latitud) : null,
+      longitude: longitude != null ? Number(longitude) : longitud != null ? Number(longitud) : null,
     })
 
     res.status(201).json({ data: property })
@@ -132,6 +141,12 @@ exports.updateProperty = async (req, res, next) => {
       max_guests,
       photo_url,
       amenity_ids,
+      house_rules,
+      latitude,
+      longitude,
+      reglas,
+      latitud,
+      longitud,
     } = req.body
 
     if (!title?.trim() || !address?.trim() || !city?.trim() || !country?.trim()) {
@@ -152,6 +167,9 @@ exports.updateProperty = async (req, res, next) => {
       max_guests: Number(max_guests),
       photo_url,
       amenity_ids,
+      house_rules: house_rules || reglas,
+      latitude: latitude != null ? Number(latitude) : latitud != null ? Number(latitud) : null,
+      longitude: longitude != null ? Number(longitude) : longitud != null ? Number(longitud) : null,
     })
 
     res.json({ data: property })

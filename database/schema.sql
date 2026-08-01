@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS usuarios (
     email           VARCHAR(255) NOT NULL,
     password_hash   VARCHAR(255) NOT NULL,
     telefono        VARCHAR(30),
+    documento_identidad VARCHAR(80),
+    documento_url   VARCHAR(500),
+    identidad_estado VARCHAR(30) NOT NULL DEFAULT 'no_requerida',
     activo          BOOLEAN NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -39,6 +42,9 @@ CREATE TABLE IF NOT EXISTS propiedades (
     pais            VARCHAR(100) NOT NULL,
     precio_noche    DECIMAL(10, 2) NOT NULL CHECK (precio_noche >= 0),
     max_huespedes   INTEGER NOT NULL CHECK (max_huespedes > 0),
+    reglas          TEXT,
+    latitud         DECIMAL(10, 7),
+    longitud        DECIMAL(10, 7),
     activa          BOOLEAN NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -59,12 +65,16 @@ CREATE TABLE IF NOT EXISTS reservaciones (
     fecha_salida        DATE NOT NULL,
     numero_huespedes    INTEGER NOT NULL CHECK (numero_huespedes > 0),
     total               DECIMAL(10, 2) NOT NULL CHECK (total >= 0),
+    subtotal            DECIMAL(10, 2),
+    comision_porcentaje DECIMAL(5, 2) NOT NULL DEFAULT 12.00,
+    comision_monto      DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    total_anfitrion     DECIMAL(10, 2),
     estado              VARCHAR(30) NOT NULL DEFAULT 'pendiente',
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_reservaciones_fechas CHECK (fecha_salida > fecha_entrada),
     CONSTRAINT chk_reservaciones_estado CHECK (
-        estado IN ('pendiente', 'confirmada', 'cancelada', 'completada')
+        estado IN ('pendiente', 'aceptada', 'confirmada', 'rechazada', 'cancelada', 'completada')
     )
 );
 
@@ -75,9 +85,10 @@ CREATE TABLE IF NOT EXISTS pagos (
     metodo_pago     VARCHAR(50) NOT NULL,
     estado          VARCHAR(30) NOT NULL DEFAULT 'pendiente',
     fecha_pago      TIMESTAMPTZ,
+    liberado_en     TIMESTAMPTZ,
     CONSTRAINT uq_pagos_reservacion UNIQUE (reservacion_id),
     CONSTRAINT chk_pagos_estado CHECK (
-        estado IN ('pendiente', 'aprobado', 'rechazado', 'reembolsado')
+        estado IN ('pendiente', 'retenido', 'liberado', 'aprobado', 'rechazado', 'reembolsado')
     )
 );
 
@@ -158,5 +169,29 @@ CREATE INDEX IF NOT EXISTS idx_propiedad_comodidades_comodidad ON propiedad_como
 CREATE INDEX IF NOT EXISTS idx_notificaciones_usuario ON notificaciones (usuario_id);
 CREATE INDEX IF NOT EXISTS idx_notificaciones_leida ON notificaciones (usuario_id, leida);
 CREATE INDEX IF NOT EXISTS idx_mensajes_leido ON mensajes (receptor_id, leido);
+
+CREATE TABLE IF NOT EXISTS bloqueos_propiedad (
+    id              SERIAL PRIMARY KEY,
+    propiedad_id    INTEGER NOT NULL REFERENCES propiedades (id) ON DELETE CASCADE,
+    fecha_inicio    DATE NOT NULL,
+    fecha_fin       DATE NOT NULL,
+    motivo          VARCHAR(200),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_bloqueos_fechas CHECK (fecha_fin > fecha_inicio)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bloqueos_propiedad ON bloqueos_propiedad (propiedad_id);
+CREATE INDEX IF NOT EXISTS idx_bloqueos_fechas ON bloqueos_propiedad (fecha_inicio, fecha_fin);
+
+CREATE TABLE IF NOT EXISTS configuracion_plataforma (
+    id                      SERIAL PRIMARY KEY,
+    clave                   VARCHAR(80) NOT NULL,
+    valor                   VARCHAR(255) NOT NULL,
+    CONSTRAINT uq_config_clave UNIQUE (clave)
+);
+
+INSERT INTO configuracion_plataforma (clave, valor) VALUES
+    ('comision_porcentaje', '12')
+ON CONFLICT (clave) DO NOTHING;
 
 COMMIT;

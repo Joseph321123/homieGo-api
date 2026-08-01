@@ -8,9 +8,14 @@ exports.create = async (req, res, next) => {
       return res.status(400).json({ error: 'reservation_id y rating son obligatorios' })
     }
 
+    const score = Number(rating)
+    if (!Number.isInteger(score) || score < 1 || score > 5) {
+      return res.status(400).json({ error: 'La calificación debe ser un entero entre 1 y 5' })
+    }
+
     const review = await reviewsService.create(req.user.sub, {
       reservation_id,
-      rating: Number(rating),
+      rating: score,
       comment,
     })
 

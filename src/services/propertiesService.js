@@ -52,9 +52,15 @@ exports.getAll = async ({
     filters.push(`NOT EXISTS (
       SELECT 1 FROM reservaciones r
       WHERE r.propiedad_id = p.id
-        AND r.estado IN ('pendiente', 'confirmada')
+        AND r.estado IN ('pendiente', 'aceptada', 'confirmada')
         AND r.fecha_entrada < $${values.length}
         AND r.fecha_salida > $${values.length - 1}
+    )`)
+    filters.push(`NOT EXISTS (
+      SELECT 1 FROM bloqueos_propiedad b
+      WHERE b.propiedad_id = p.id
+        AND b.fecha_inicio < $${values.length}
+        AND b.fecha_fin > $${values.length - 1}
     )`)
   }
 
@@ -107,7 +113,7 @@ exports.getAll = async ({
        LIMIT 1
      ) f ON TRUE
      LEFT JOIN reservaciones r ON r.propiedad_id = p.id
-     LEFT JOIN resenas re ON re.reservacion_id = r.id
+     LEFT JOIN resenas re ON re.reservacion_id = r.id AND re.autor_id = r.huesped_id
      WHERE ${whereSql}
      GROUP BY p.id, f.url_foto
      ORDER BY ${orderBy}
@@ -137,19 +143,25 @@ exports.getById = async (id) => {
             p.pais AS country,
             p.precio_noche AS price_per_night,
             p.max_huespedes AS max_guests,
+            p.reglas AS house_rules,
+            p.latitud AS latitude,
+            p.longitud AS longitude,
             u.nombre AS host_name,
+            u.identidad_estado AS host_identity_status,
             f.url_foto AS photo_url,
             (
               SELECT ROUND(AVG(re.calificacion)::numeric, 1)
               FROM resenas re
               JOIN reservaciones r ON r.id = re.reservacion_id
               WHERE r.propiedad_id = p.id
+                AND re.autor_id = r.huesped_id
             ) AS rating_avg,
             (
               SELECT COUNT(*)::int
               FROM resenas re
               JOIN reservaciones r ON r.id = re.reservacion_id
               WHERE r.propiedad_id = p.id
+                AND re.autor_id = r.huesped_id
             ) AS reviews_count
      FROM propiedades p
      JOIN usuarios u ON u.id = p.anfitrion_id
@@ -168,6 +180,8 @@ exports.getById = async (id) => {
   if (!property) return null
 
   property.rating_avg = property.rating_avg ? Number(property.rating_avg) : null
+  property.latitude = property.latitude != null ? Number(property.latitude) : null
+  property.longitude = property.longitude != null ? Number(property.longitude) : null
   property.photos = await photosService.listByProperty(id)
   property.blocked_dates = await availabilityService.getBlockedRanges(id)
   property.amenities = await amenitiesService.listByProperty(id)
@@ -185,6 +199,9 @@ exports.create = async (hostId, payload) => {
     max_guests,
     photo_url,
     amenity_ids = [],
+    house_rules,
+    latitude,
+    longitude,
   } = payload
 
   const client = await pool.connect()
@@ -194,11 +211,12 @@ exports.create = async (hostId, payload) => {
     const { rows } = await client.query(
       `INSERT INTO propiedades (
          anfitrion_id, titulo, descripcion, direccion, ciudad, pais,
-         precio_noche, max_huespedes, activa
+         precio_noche, max_huespedes, reglas, latitud, longitud, activa
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE)
        RETURNING id, titulo AS title, ciudad AS city, pais AS country,
-                 precio_noche AS price_per_night, max_huespedes AS max_guests`,
+                 precio_noche AS price_per_night, max_huespedes AS max_guests,
+                 reglas AS house_rules, latitud AS latitude, longitud AS longitude`,
       [
         hostId,
         title.trim(),
@@ -208,6 +226,9 @@ exports.create = async (hostId, payload) => {
         country.trim(),
         price_per_night,
         max_guests,
+        house_rules?.trim() || null,
+        latitude ?? null,
+        longitude ?? null,
       ]
     )
 
@@ -297,6 +318,9 @@ exports.update = async (propertyId, hostId, payload) => {
     max_guests,
     photo_url,
     amenity_ids,
+    house_rules,
+    latitude,
+    longitude,
   } = payload
 
   const client = await pool.connect()
@@ -312,10 +336,15 @@ exports.update = async (propertyId, hostId, payload) => {
            pais = $7,
            precio_noche = $8,
            max_huespedes = $9,
+           reglas = $10,
+           latitud = $11,
+           longitud = $12,
            updated_at = NOW()
        WHERE id = $1 AND anfitrion_id = $2
        RETURNING id, titulo AS title, ciudad AS city, pais AS country,
-                 precio_noche AS price_per_night, max_huespedes AS max_guests, activa AS active`,
+                 precio_noche AS price_per_night, max_huespedes AS max_guests,
+                 reglas AS house_rules, latitud AS latitude, longitud AS longitude,
+                 activa AS active`,
       [
         propertyId,
         hostId,
@@ -326,6 +355,9 @@ exports.update = async (propertyId, hostId, payload) => {
         country.trim(),
         price_per_night,
         max_guests,
+        house_rules?.trim() || null,
+        latitude ?? null,
+        longitude ?? null,
       ]
     )
 
@@ -383,6 +415,9 @@ exports.getByIdForHost = async (propertyId, hostId) => {
             p.pais AS country,
             p.precio_noche AS price_per_night,
             p.max_huespedes AS max_guests,
+            p.reglas AS house_rules,
+            p.latitud AS latitude,
+            p.longitud AS longitude,
             p.activa AS active,
             f.url_foto AS photo_url
      FROM propiedades p
@@ -398,6 +433,8 @@ exports.getByIdForHost = async (propertyId, hostId) => {
   )
   const property = rows[0]
   if (!property) return null
+  property.latitude = property.latitude != null ? Number(property.latitude) : null
+  property.longitude = property.longitude != null ? Number(property.longitude) : null
   property.amenities = await amenitiesService.listByProperty(propertyId)
   return property
 }
