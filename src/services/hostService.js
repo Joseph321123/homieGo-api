@@ -22,14 +22,22 @@ exports.getStats = async (hostId) => {
          FROM pagos pg
          JOIN reservaciones r ON r.id = pg.reservacion_id
          JOIN propiedades p ON p.id = r.propiedad_id
-         WHERE p.anfitrion_id = $1 AND pg.estado = 'aprobado'
+         WHERE p.anfitrion_id = $1 AND pg.estado IN ('liberado', 'aprobado')
        ) AS earnings,
+       (
+         SELECT COALESCE(SUM(r.total_anfitrion), 0)
+         FROM reservaciones r
+         JOIN propiedades p ON p.id = r.propiedad_id
+         JOIN pagos pg ON pg.reservacion_id = r.id
+         WHERE p.anfitrion_id = $1 AND pg.estado = 'retenido'
+       ) AS escrow_held,
        (
          SELECT ROUND(COALESCE(AVG(re.calificacion), 0)::numeric, 1)
          FROM resenas re
          JOIN reservaciones r ON r.id = re.reservacion_id
          JOIN propiedades p ON p.id = r.propiedad_id
          WHERE p.anfitrion_id = $1
+           AND re.autor_id = r.huesped_id
        ) AS average_rating`,
     [hostId]
   )

@@ -22,6 +22,14 @@ WHERE propiedad_id IN (
     WHERE u.email = 'ana@homiego.demo'
 );
 
+DELETE FROM bloqueos_propiedad
+WHERE propiedad_id IN (
+    SELECT p.id
+    FROM propiedades p
+    JOIN usuarios u ON u.id = p.anfitrion_id
+    WHERE u.email = 'ana@homiego.demo'
+);
+
 DELETE FROM propiedad_comodidades
 WHERE propiedad_id IN (
     SELECT p.id
@@ -44,19 +52,26 @@ WHERE anfitrion_id IN (
 );
 
 -- Usuario anfitriona y propiedades de demostracion
-INSERT INTO usuarios (nombre, email, password_hash, telefono, activo)
+INSERT INTO usuarios (
+    nombre, email, password_hash, telefono, activo,
+    documento_identidad, identidad_estado
+)
 VALUES (
     'Ana García',
     'ana@homiego.demo',
     '$2b$10$UUxKOy/EQ9hjJ60qZ4b.RuT5dwwY57qnznZBqC64txIGRnxWDr2AW',
     '+52 555 123 4567',
-    TRUE
+    TRUE,
+    'INE-DEMO-ANA-001',
+    'verificada'
 )
 ON CONFLICT (email) DO UPDATE
 SET nombre = EXCLUDED.nombre,
     password_hash = EXCLUDED.password_hash,
     telefono = EXCLUDED.telefono,
-    activo = EXCLUDED.activo;
+    activo = EXCLUDED.activo,
+    documento_identidad = EXCLUDED.documento_identidad,
+    identidad_estado = EXCLUDED.identidad_estado;
 
 INSERT INTO usuario_roles (usuario_id, rol_id)
 SELECT u.id, r.id
@@ -68,7 +83,7 @@ ON CONFLICT (usuario_id, rol_id) DO NOTHING;
 
 INSERT INTO propiedades (
     anfitrion_id, titulo, descripcion, direccion, ciudad, pais,
-    precio_noche, max_huespedes, activa
+    precio_noche, max_huespedes, reglas, latitud, longitud, activa
 )
 SELECT
     u.id,
@@ -79,13 +94,16 @@ SELECT
     'México',
     1850.00,
     4,
+    'No fumar. No fiestas. Check-in después de las 15:00.',
+    15.8720000,
+    -97.0770000,
     TRUE
 FROM usuarios u
 WHERE u.email = 'ana@homiego.demo';
 
 INSERT INTO propiedades (
     anfitrion_id, titulo, descripcion, direccion, ciudad, pais,
-    precio_noche, max_huespedes, activa
+    precio_noche, max_huespedes, reglas, latitud, longitud, activa
 )
 SELECT
     u.id,
@@ -96,13 +114,16 @@ SELECT
     'México',
     1420.00,
     2,
+    'Silencio después de las 22:00. Máximo 2 huéspedes.',
+    25.6866000,
+    -100.3161000,
     TRUE
 FROM usuarios u
 WHERE u.email = 'ana@homiego.demo';
 
 INSERT INTO propiedades (
     anfitrion_id, titulo, descripcion, direccion, ciudad, pais,
-    precio_noche, max_huespedes, activa
+    precio_noche, max_huespedes, reglas, latitud, longitud, activa
 )
 SELECT
     u.id,
@@ -113,6 +134,9 @@ SELECT
     'México',
     980.00,
     3,
+    'Respetar la naturaleza. No mascotas sin aviso previo.',
+    21.8853000,
+    -102.2916000,
     TRUE
 FROM usuarios u
 WHERE u.email = 'ana@homiego.demo';
