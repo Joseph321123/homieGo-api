@@ -1,4 +1,5 @@
 const adminService = require('../services/adminService')
+const authService = require('../services/authService')
 
 exports.dashboard = async (req, res, next) => {
   try {
@@ -49,6 +50,24 @@ exports.setPropertyActive = async (req, res, next) => {
   try {
     const result = await adminService.setPropertyActive(req.params.id, Boolean(req.body.active))
     res.json({ data: result })
+  } catch (err) {
+    next(err)
+  }
+}
+
+exports.setIdentityStatus = async (req, res, next) => {
+  try {
+    const result = await authService.setIdentityStatus(req.params.id, req.body.identidad_estado)
+    res.json({ data: result })
+  } catch (err) {
+    next(err)
+  }
+}
+
+exports.pendingIdentities = async (req, res, next) => {
+  try {
+    const items = await adminService.getPendingIdentities()
+    res.json({ data: items, total: items.length })
   } catch (err) {
     next(err)
   }

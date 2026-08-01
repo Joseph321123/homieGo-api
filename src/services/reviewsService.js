@@ -8,22 +8,23 @@ exports.create = async (authorId, payload) => {
     `SELECT r.id,
             r.huesped_id,
             r.estado,
-            r.fecha_salida,
             r.propiedad_id AS property_id,
             p.anfitrion_id AS host_id,
             p.titulo AS property_title,
-            u.nombre AS author_name
+            g.nombre AS guest_name,
+            h.nombre AS host_name
      FROM reservaciones r
      JOIN propiedades p ON p.id = r.propiedad_id
-     JOIN usuarios u ON u.id = r.huesped_id
+     JOIN usuarios g ON g.id = r.huesped_id
+     JOIN usuarios h ON h.id = p.anfitrion_id
      WHERE r.id = $1`,
     [reservation_id]
   )
 
   const reservation = rows[0]
-  if (!reservation || reservation.huesped_id !== authorId) {
-    const error = new Error('No puedes reseñar esta reservación')
-    error.status = 403
+  if (!reservation) {
+    const error = new Error('Reservación no encontrada')
+    error.status = 404
     throw error
   }
 
@@ -33,19 +34,36 @@ exports.create = async (authorId, payload) => {
     throw error
   }
 
+  const isGuest = reservation.huesped_id === authorId
+  const isHost = reservation.host_id === authorId
+
+  if (!isGuest && !isHost) {
+    const error = new Error('No puedes reseñar esta reservación')
+    error.status = 403
+    throw error
+  }
+
+  const receptorId = isGuest ? reservation.host_id : reservation.huesped_id
+  const notifyUser = receptorId
+  const title = isGuest ? 'Nueva reseña de huésped' : 'Nueva reseña de anfitrión'
+  const who = isGuest ? reservation.guest_name : reservation.host_name
+  const about = isGuest
+    ? `"${reservation.property_title}"`
+    : `al huésped ${reservation.guest_name}`
+
   const { rows: created } = await pool.query(
     `INSERT INTO resenas (reservacion_id, autor_id, receptor_id, calificacion, comentario)
      VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, calificacion, comentario, fecha_resena`,
-    [reservation_id, authorId, reservation.host_id, rating, comment?.trim() || null]
+     RETURNING id, calificacion AS rating, comentario AS comment, fecha_resena AS created_at`,
+    [reservation_id, authorId, receptorId, rating, comment?.trim() || null]
   )
 
   await notificationsService.create({
-    usuario_id: reservation.host_id,
+    usuario_id: notifyUser,
     tipo: 'resena',
-    titulo: 'Nueva reseña',
-    mensaje: `${reservation.author_name} calificó "${reservation.property_title}" con ${rating}/5.`,
-    enlace: `/properties/${reservation.property_id}`,
+    titulo: title,
+    mensaje: `${who} calificó ${about} con ${rating}/5.`,
+    enlace: isGuest ? `/properties/${reservation.property_id}` : '/reservations',
   })
 
   return created[0]
@@ -57,11 +75,13 @@ exports.getByProperty = async (propertyId) => {
             re.calificacion AS rating,
             re.comentario AS comment,
             re.fecha_resena AS created_at,
-            u.nombre AS author_name
+            u.nombre AS author_name,
+            CASE WHEN re.autor_id = r.huesped_id THEN 'huesped' ELSE 'anfitrion' END AS author_role
      FROM resenas re
      JOIN reservaciones r ON r.id = re.reservacion_id
      JOIN usuarios u ON u.id = re.autor_id
      WHERE r.propiedad_id = $1
+       AND re.autor_id = r.huesped_id
      ORDER BY re.fecha_resena DESC`,
     [propertyId]
   )
@@ -71,7 +91,8 @@ exports.getByProperty = async (propertyId) => {
             COUNT(*)::int AS total
      FROM resenas re
      JOIN reservaciones r ON r.id = re.reservacion_id
-     WHERE r.propiedad_id = $1`,
+     WHERE r.propiedad_id = $1
+       AND re.autor_id = r.huesped_id`,
     [propertyId]
   )
 

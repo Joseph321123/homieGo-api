@@ -1,6 +1,8 @@
 const { pool } = require('../config/db')
 const paymentsService = require('./paymentsService')
 const notificationsService = require('./notificationsService')
+const settingsService = require('./settingsService')
+const availabilityService = require('./availabilityService')
 
 const calculateNights = (checkIn, checkOut) => {
   const start = new Date(`${checkIn}T00:00:00`)
@@ -33,29 +35,30 @@ exports.create = async (guestId, payload) => {
     throw error
   }
 
+  if (property.anfitrion_id === guestId) {
+    const error = new Error('No puedes reservar tu propia propiedad')
+    error.status = 400
+    throw error
+  }
+
   if (guests > property.max_huespedes) {
     const error = new Error(`Esta propiedad admite máximo ${property.max_huespedes} huéspedes`)
     error.status = 400
     throw error
   }
 
-  const { rows: conflicts } = await pool.query(
-    `SELECT id
-     FROM reservaciones
-     WHERE propiedad_id = $1
-       AND estado IN ('pendiente', 'confirmada')
-       AND fecha_entrada < $3
-       AND fecha_salida > $2`,
-    [property_id, check_in, check_out]
-  )
-
-  if (conflicts.length > 0) {
+  const available = await availabilityService.isAvailable(property_id, check_in, check_out)
+  if (!available) {
     const error = new Error('Las fechas seleccionadas no están disponibles')
     error.status = 409
     throw error
   }
 
-  const total = Number(property.precio_noche) * nights
+  const commissionPercent = await settingsService.getCommissionPercent()
+  const subtotal = Number(property.precio_noche) * nights
+  const comision = Math.round(subtotal * (commissionPercent / 100) * 100) / 100
+  const total = subtotal
+  const totalAnfitrion = Math.round((subtotal - comision) * 100) / 100
 
   const client = await pool.connect()
   try {
@@ -64,27 +67,38 @@ exports.create = async (guestId, payload) => {
     const { rows } = await client.query(
       `INSERT INTO reservaciones (
          propiedad_id, huesped_id, fecha_entrada, fecha_salida,
-         numero_huespedes, total, estado
+         numero_huespedes, total, subtotal, comision_porcentaje,
+         comision_monto, total_anfitrion, estado
        )
-       VALUES ($1, $2, $3, $4, $5, $6, 'pendiente')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pendiente')
        RETURNING id, propiedad_id, fecha_entrada, fecha_salida,
-                 numero_huespedes, total, estado, created_at`,
-      [property_id, guestId, check_in, check_out, guests, total]
+                 numero_huespedes, total, subtotal, comision_porcentaje,
+                 comision_monto, total_anfitrion, estado, created_at`,
+      [
+        property_id,
+        guestId,
+        check_in,
+        check_out,
+        guests,
+        total,
+        subtotal,
+        commissionPercent,
+        comision,
+        totalAnfitrion,
+      ]
     )
 
     const reservation = rows[0]
     await paymentsService.createForReservation(client, reservation.id, total)
     await client.query('COMMIT')
 
-    if (property.anfitrion_id !== guestId) {
-      await notificationsService.create({
-        usuario_id: property.anfitrion_id,
-        tipo: 'reserva',
-        titulo: 'Nueva solicitud de reserva',
-        mensaje: `Tienes una nueva reserva pendiente en "${property.titulo}" del ${check_in} al ${check_out}.`,
-        enlace: '/host',
-      })
-    }
+    await notificationsService.create({
+      usuario_id: property.anfitrion_id,
+      tipo: 'reserva',
+      titulo: 'Nueva solicitud de reserva',
+      mensaje: `Confirma o rechaza la reserva en "${property.titulo}" del ${check_in} al ${check_out}.`,
+      enlace: '/host',
+    })
 
     return {
       ...reservation,
@@ -94,6 +108,9 @@ exports.create = async (guestId, payload) => {
       status: reservation.estado,
       property_title: property.titulo,
       nights,
+      commission_percent: Number(reservation.comision_porcentaje),
+      commission_amount: Number(reservation.comision_monto),
+      host_payout: Number(reservation.total_anfitrion),
       payment_status: 'pendiente',
     }
   } catch (err) {
@@ -104,6 +121,89 @@ exports.create = async (guestId, payload) => {
   }
 }
 
+exports.accept = async (reservationId, hostId) => {
+  const { rows: meta } = await pool.query(
+    `SELECT r.id, r.huesped_id, r.estado, p.anfitrion_id, p.titulo
+     FROM reservaciones r
+     JOIN propiedades p ON p.id = r.propiedad_id
+     WHERE r.id = $1`,
+    [reservationId]
+  )
+  const reservation = meta[0]
+  if (!reservation || reservation.anfitrion_id !== hostId) {
+    const error = new Error('Reservación no encontrada')
+    error.status = 404
+    throw error
+  }
+  if (reservation.estado !== 'pendiente') {
+    const error = new Error('Solo puedes aceptar solicitudes pendientes')
+    error.status = 400
+    throw error
+  }
+
+  const { rows } = await pool.query(
+    `UPDATE reservaciones
+     SET estado = 'aceptada', updated_at = NOW()
+     WHERE id = $1
+     RETURNING id, estado AS status`,
+    [reservationId]
+  )
+
+  await notificationsService.create({
+    usuario_id: reservation.huesped_id,
+    tipo: 'reserva',
+    titulo: 'Reserva aceptada',
+    mensaje: `El anfitrión aceptó tu reserva en "${reservation.titulo}". Ya puedes pagar.`,
+    enlace: '/reservations',
+  })
+
+  return rows[0]
+}
+
+exports.reject = async (reservationId, hostId) => {
+  const { rows: meta } = await pool.query(
+    `SELECT r.id, r.huesped_id, r.estado, p.anfitrion_id, p.titulo
+     FROM reservaciones r
+     JOIN propiedades p ON p.id = r.propiedad_id
+     WHERE r.id = $1`,
+    [reservationId]
+  )
+  const reservation = meta[0]
+  if (!reservation || reservation.anfitrion_id !== hostId) {
+    const error = new Error('Reservación no encontrada')
+    error.status = 404
+    throw error
+  }
+  if (reservation.estado !== 'pendiente') {
+    const error = new Error('Solo puedes rechazar solicitudes pendientes')
+    error.status = 400
+    throw error
+  }
+
+  const { rows } = await pool.query(
+    `UPDATE reservaciones
+     SET estado = 'rechazada', updated_at = NOW()
+     WHERE id = $1
+     RETURNING id, estado AS status`,
+    [reservationId]
+  )
+
+  await pool.query(
+    `UPDATE pagos SET estado = 'rechazado' WHERE reservacion_id = $1 AND estado = 'pendiente'`,
+    [reservationId]
+  )
+
+  await notificationsService.create({
+    usuario_id: reservation.huesped_id,
+    tipo: 'reserva',
+    titulo: 'Reserva rechazada',
+    mensaje: `El anfitrión rechazó tu solicitud en "${reservation.titulo}".`,
+    enlace: '/reservations',
+  })
+
+  return rows[0]
+}
+
 exports.getByGuest = async (guestId) => {
   const { rows } = await pool.query(
     `SELECT r.id,
@@ -111,6 +211,10 @@ exports.getByGuest = async (guestId) => {
             r.fecha_salida AS check_out,
             r.numero_huespedes AS guests,
             r.total,
+            r.subtotal,
+            r.comision_porcentaje AS commission_percent,
+            r.comision_monto AS commission_amount,
+            r.total_anfitrion AS host_payout,
             r.estado AS status,
             r.created_at,
             r.propiedad_id AS property_id,
@@ -142,46 +246,53 @@ exports.getByGuest = async (guestId) => {
 
 exports.cancel = async (reservationId, userId) => {
   const { rows: before } = await pool.query(
-    `SELECT r.id, r.huesped_id, p.anfitrion_id, p.titulo
+    `SELECT r.id, r.huesped_id, r.estado, p.anfitrion_id, p.titulo
      FROM reservaciones r
      JOIN propiedades p ON p.id = r.propiedad_id
      WHERE r.id = $1`,
     [reservationId]
   )
   const meta = before[0]
-
-  const { rows } = await pool.query(
-    `UPDATE reservaciones
-     SET estado = 'cancelada', updated_at = NOW()
-     WHERE id = $1
-       AND huesped_id = $2
-       AND estado IN ('pendiente', 'confirmada')
-     RETURNING id, estado AS status`,
-    [reservationId, userId]
-  )
-
-  if (!rows[0]) {
+  if (!meta || meta.huesped_id !== userId) {
     const error = new Error('No se puede cancelar esta reservación')
     error.status = 400
     throw error
   }
 
-  await pool.query(
-    `UPDATE pagos
-     SET estado = 'reembolsado'
-     WHERE reservacion_id = $1 AND estado = 'aprobado'`,
+  if (!['pendiente', 'aceptada', 'confirmada'].includes(meta.estado)) {
+    const error = new Error('No se puede cancelar esta reservación')
+    error.status = 400
+    throw error
+  }
+
+  const { rows } = await pool.query(
+    `UPDATE reservaciones
+     SET estado = 'cancelada', updated_at = NOW()
+     WHERE id = $1
+     RETURNING id, estado AS status`,
     [reservationId]
   )
 
-  if (meta?.anfitrion_id) {
-    await notificationsService.create({
-      usuario_id: meta.anfitrion_id,
-      tipo: 'cancelacion',
-      titulo: 'Reserva cancelada',
-      mensaje: `Se canceló una reserva en "${meta.titulo}".`,
-      enlace: '/host',
-    })
-  }
+  await pool.query(
+    `UPDATE pagos
+     SET estado = 'reembolsado'
+     WHERE reservacion_id = $1 AND estado IN ('retenido', 'liberado', 'aprobado')`,
+    [reservationId]
+  )
+  await pool.query(
+    `UPDATE pagos
+     SET estado = 'rechazado'
+     WHERE reservacion_id = $1 AND estado = 'pendiente'`,
+    [reservationId]
+  )
+
+  await notificationsService.create({
+    usuario_id: meta.anfitrion_id,
+    tipo: 'cancelacion',
+    titulo: 'Reserva cancelada',
+    mensaje: `Se canceló una reserva en "${meta.titulo}".`,
+    enlace: '/host',
+  })
 
   return rows[0]
 }
@@ -193,10 +304,20 @@ exports.getByHost = async (hostId) => {
             r.fecha_salida AS check_out,
             r.numero_huespedes AS guests,
             r.total,
+            r.subtotal,
+            r.comision_porcentaje AS commission_percent,
+            r.comision_monto AS commission_amount,
+            r.total_anfitrion AS host_payout,
             r.estado AS status,
             u.nombre AS guest_name,
+            u.id AS guest_id,
             p.titulo AS property_title,
-            pg.estado AS payment_status
+            p.id AS property_id,
+            pg.estado AS payment_status,
+            EXISTS (
+              SELECT 1 FROM resenas re
+              WHERE re.reservacion_id = r.id AND re.autor_id = $1
+            ) AS has_host_review
      FROM reservaciones r
      JOIN propiedades p ON p.id = r.propiedad_id
      JOIN usuarios u ON u.id = r.huesped_id
